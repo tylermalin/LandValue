@@ -81,7 +81,9 @@ def build_run_input(cfg) -> dict:
     return {
         "zip_codes": list(cfg.target_zips),
         "listing_type": "for_sale",
-        "proxyConfiguration": {"useApifyProxy": True},
+        # Land.com blocks datacenter IPs; the actor's own example uses residential.
+        "proxyConfiguration": {"useApifyProxy": True,
+                               "apifyProxyGroups": ["RESIDENTIAL"]},
     }
 
 
@@ -101,12 +103,27 @@ def fetch_live_parcels(cfg) -> List["Parcel"]:
 
     client = ApifyClient(cfg.apify_token)
     run = client.actor(cfg.scraper_actor_id).call(run_input=build_run_input(cfg))
+    if run is None:
+        return []
+
+    # apify-client 3.x returns a pydantic Run object (snake_case attrs); older
+    # versions returned a dict. Support both.
+    def field(obj, attr, key):
+        if isinstance(obj, dict):
+            return obj.get(key)
+        return getattr(obj, attr, None)
+
+    status = field(run, "status", "status")
+    dataset_id = field(run, "default_dataset_id", "defaultDatasetId")
+    if status and str(status) != "SUCCEEDED":
+        raise RuntimeError(
+            f"Apify actor run did not succeed (status={status}). Check the run "
+            f"log in the Apify console; a common cause is proxy blocking."
+        )
+    if not dataset_id:
+        return []
 
     parcels: List[Parcel] = []
-    dataset_id = run.get("defaultDatasetId") if run else None
-    if not dataset_id:
-        return parcels
-
     for row in client.dataset(dataset_id).iterate_items():
         parcel = _row_to_parcel(row)
         if parcel is not None:
