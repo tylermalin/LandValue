@@ -110,6 +110,45 @@ land-value-engine/
 | `SURFACE_WATER_BONUS_MILES` | `5.0` | surface-water proximity bonus radius (0 disables) |
 | `TARGET_STATES` / `TARGET_ZIPS` | corridor | ingestion targeting |
 
+## Demo
+
+One-time setup (light deps — the engine runs without the heavy GDAL stack):
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install jinja2 python-dotenv pandas streamlit pydeck
+```
+
+**A · Interactive dashboard (best for a live audience)**
+```bash
+streamlit run dashboard.py          # opens http://localhost:8501
+```
+LAS-colored corridor map + sortable Top-N arbitrage matrix + per-parcel
+breakdown. Sidebar sliders (price ceiling, headroom, buffer, state/LAS filters)
+re-run the pipeline live. Works out-of-the-box on the committed sample data.
+
+**B · Generate a dossier from the CLI**
+```bash
+python master_engine.py --mock --top 5
+open output_reports/lve_dossier_*.html      # institutional dossier
+# PDF output instead of HTML: brew install wkhtmltopdf
+```
+
+**C · Run on real HIFLD/USGS data**
+```bash
+python data_loaders.py --bbox=-118.5,37,-116,39.5   # fast NV slice
+python data_loaders.py --states NV,AZ,UT,NM          # full corridor
+```
+Then re-run A or B — the dashboard scatters demo parcels around the real
+substations you just loaded.
+
+**D · On-chain milestone escrow (Phase 4)**
+```bash
+cd onchain
+forge install foundry-rs/forge-std openzeppelin/openzeppelin-contracts --no-git
+forge test -vvv                     # 17 tests: full escrow lifecycle
+```
+
 ## Dashboard (Phase 3)
 
 An interactive Streamlit dashboard visualizes the Top-N latent-arbitrage matrix
