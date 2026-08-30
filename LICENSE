@@ -1,0 +1,37 @@
+Copyright (c) 2026 Tyler Malin. All Rights Reserved.
+
+PROPRIETARY AND CONFIDENTIAL
+
+This software and its source code, documentation, data, and all associated
+materials (the "Software") — including the Land Value Engine & Latent Arbitrage
+Protocol (LVE-LAP), its scoring models, valuation models, generated dossiers,
+and smart-contract code — are the proprietary and confidential property of the
+copyright holder.
+
+No license, express or implied, is granted. Without the prior written
+permission of the copyright holder, no person or entity may:
+
+  1. use, execute, or run the Software for any purpose;
+  2. copy, reproduce, or store the Software, in whole or in part;
+  3. modify, adapt, translate, or create derivative works of the Software;
+  4. distribute, publish, sublicense, sell, lease, or otherwise transfer the
+     Software or access to it; or
+  5. reverse engineer, decompile, or disassemble the Software, except to the
+     extent such restriction is prohibited by applicable law.
+
+Unauthorized use, reproduction, or distribution of the Software, or any portion
+of it, may result in civil and criminal penalties and will be prosecuted to the
+maximum extent possible under the law.
+
+DISCLAIMER: The Software is provided "AS IS", without warranty of any kind,
+express or implied, including but not limited to the warranties of
+merchantability, fitness for a particular purpose, and noninfringement. In no
+event shall the copyright holder be liable for any claim, damages, or other
+liability arising from, out of, or in connection with the Software or its use.
+
+The Software produces modeled diagnostic estimates only. It does not constitute
+an appraisal, financial advice, investment advice, or an offer or solicitation
+to buy or sell any asset. The smart-contract code is an unaudited demonstration
+scaffold and must not be used to handle mainnet value.
+
+For licensing inquiries, contact the copyright holder.
