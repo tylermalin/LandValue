@@ -52,11 +52,26 @@ def methodology(cfg) -> List[Dict]:
         {
             "title": "Lifecycle capital model — coefficients",
             "rows": [
-                ("Due-diligence budget", f"{lc.DUE_DILIGENCE_PCT*100:.0f}% of asking"),
-                ("Interconnection cost", f"{lc.INTERCONNECT_PCT_OF_ENERGY*100:.0f}% of energy value "
+                ("Due-diligence budget", f"{lc.DUE_DILIGENCE_PCT*100:.0f}% of asking price"),
+                ("Interconnection cost", f"${lc.INTERCONNECT_COST_PER_MW:,.0f}/MW "
                                           f"(floor ${lc.INTERCONNECT_FLOOR:,.0f})"),
-                ("Debt capacity", f"{lc.DEBT_CAPACITY_PCT*100:.0f}% of entitled HBU"),
-                ("Build capex", f"{lc.BUILD_CAPEX_PCT_OF_ENERGY*100:.0f}% of energy value"),
+                ("Debt capacity", f"{lc.DEBT_CAPACITY_PCT*100:.0f}% of entitled HBU (LTV)"),
+                ("Disposition cost", f"{lc.DISPOSITION_PCT*100:.0f}% of HBU (sale/JV exit)"),
+                ("Self-build capex", f"${lc.BUILD_CAPEX_PER_MW/1e6:.0f}M/MW "
+                                     "(operator cost, informational only)"),
+            ],
+        },
+        {
+            "title": "Coefficient basis (research-grounded estimates)",
+            "rows": [
+                ("$/MW headroom", "Firm interconnection ~$465k/MW (Stream 66-ac / "
+                 "164 MW Young County TX, Q1'25); discounted ~2/3 for unqueued proxy"),
+                ("$/acre-foot", "Permanent transfers ~$609/AF (environmental) to "
+                 "$10k+/AF (municipal); conservative mid"),
+                ("$/acre floor", "Rural comps ~$1,831/acre (TX ranch) down to a few "
+                 "hundred $/acre for BLM-adjacent desert"),
+                ("Build capex/MW", "Greenfield data-center all-in ~$17.6M/MW "
+                 "(Cushman & Wakefield 2026); site/shell power infra is a fraction"),
             ],
         },
         {

@@ -18,15 +18,23 @@ from dataclasses import dataclass
 
 from parcels import Parcel
 
-# --- Model coefficients ------------------------------------------------------
-VALUE_PER_MW_HEADROOM = 85_000.0      # $/MW of usable interconnect headroom
-VALUE_PER_ACRE_FOOT = 4_500.0        # $/AF of appurtenant water rights
-GEOTHERMAL_PREMIUM = 250_000.0       # flat premium for a geothermal signature
-MINERAL_PREMIUM = 120_000.0          # flat premium for mineral/gold claims
-RAW_ACRE_FLOOR = 1_500.0             # $/acre baseline utility floor
-# Max water-banking / access premium for a parcel adjacent to surface water,
-# scaled linearly to 0 at the proximity threshold. Distinct from water RIGHTS.
-SURFACE_WATER_PREMIUM = 150_000.0
+# --- Model coefficients (research-grounded; see methodology for citations) ----
+# Firm, interconnection-ready power traded ~$465k/MW in a hot market (Stream's
+# 66-acre / 164 MW Young County TX deal, Q1'25). Our headroom is an UNQUEUED
+# voltage proxy, so we discount ~2/3 of that firm-queue premium.
+VALUE_PER_MW_HEADROOM = 150_000.0     # $/MW of (unqueued, proxied) headroom
+# Permanent transferable water rights span ~$609/AF (environmental purchases)
+# to $10k+/AF (scarce municipal transfers); conservative mid for an appurtenant
+# Western-basin right.
+VALUE_PER_ACRE_FOOT = 2_500.0        # $/AF of appurtenant water rights
+GEOTHERMAL_PREMIUM = 200_000.0       # optionality placeholder (pending survey)
+MINERAL_PREMIUM = 100_000.0          # optionality placeholder (pending title check)
+# Remote Western desert raw land: rural comps run ~$1,831/acre (TX ranch) down
+# to a few hundred $/acre for BLM-adjacent desert; conservative floor.
+RAW_ACRE_FLOOR = 750.0               # $/acre baseline utility floor
+# Water-banking / access optionality for a parcel adjacent to surface water,
+# scaled linearly to 0 at the proximity threshold. NOT a legal water right.
+SURFACE_WATER_PREMIUM = 100_000.0
 
 
 def _clamp(v: float, lo: float = 0.0, hi: float = 1.0) -> float:

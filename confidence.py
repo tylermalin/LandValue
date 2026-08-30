@@ -197,6 +197,6 @@ def score_confidence(parcel: Parcel) -> ConfidenceBreakdown:
     else:
         f.append(ConfidenceFactor(
             "surface_water", "Surface-water proximity", Provenance.MISSING, 0.05,
-            "No hydrography layer loaded."))
+            "No USGS-mapped waterbody within range of this parcel."))
 
     return ConfidenceBreakdown(factors=f)

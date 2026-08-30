@@ -24,13 +24,17 @@ from typing import List
 from parcels import Parcel
 from valuation import Valuation
 
-# --- Modeled lifecycle coefficients (see methodology) ------------------------
-DUE_DILIGENCE_PCT = 0.05          # of asking price, for title/survey/environmental
-INTERCONNECT_PCT_OF_ENERGY = 0.08  # study + upgrades, as a share of energy value
+# --- Modeled lifecycle coefficients (research-grounded; see methodology) -----
+DUE_DILIGENCE_PCT = 0.04          # of asking price: title/survey/environmental (~3-5%)
+INTERCONNECT_COST_PER_MW = 100_000.0  # study + typical network upgrades ($/MW)
 INTERCONNECT_FLOOR = 150_000.0    # minimum interconnection/permitting spend
-DEBT_CAPACITY_PCT = 0.60          # financeable share of entitled HBU basis
-FINANCING_FEE_PCT = 0.01          # of debt capacity
-BUILD_CAPEX_PCT_OF_ENERGY = 0.90  # build path capex, as a share of energy value
+DEBT_CAPACITY_PCT = 0.55          # conservative LTV against entitled HBU basis
+FINANCING_FEE_PCT = 0.015         # of debt capacity
+DISPOSITION_PCT = 0.02           # sale/JV closing cost (the land-owner's exit path)
+# Informational only — the OPERATOR's build cost, not the land owner's. Greenfield
+# data-center all-in ~$17.6M/MW (Cushman & Wakefield 2026); site/shell power infra
+# is a fraction. Surfaced for the self-build exit option, NOT in the capital total.
+BUILD_CAPEX_PER_MW = 10_000_000.0
 
 
 @dataclass
@@ -66,8 +70,8 @@ def build_lifecycle(parcel: Parcel, v: Valuation) -> List[LifecycleStage]:
         milestone_gate="Escrow Milestone 1 (Acquisition)",
     )
 
-    interconnect_cost = max(v.energy_component * INTERCONNECT_PCT_OF_ENERGY,
-                            INTERCONNECT_FLOOR)
+    headroom_mw = parcel.nearest_substation_headroom_mw
+    interconnect_cost = max(headroom_mw * INTERCONNECT_COST_PER_MW, INTERCONNECT_FLOOR)
     s2 = LifecycleStage(
         stage=2,
         title="Interconnection & Permitting",
@@ -99,24 +103,27 @@ def build_lifecycle(parcel: Parcel, v: Valuation) -> List[LifecycleStage]:
         milestone_gate="Escrow Milestone 3 (Equity Leverage)",
     )
 
+    build_capex = headroom_mw * BUILD_CAPEX_PER_MW
     s4 = LifecycleStage(
         stage=4,
         title="Exit / JV Build",
-        objective="Realize the HBU: build the energy/compute node (or "
-                  "agrivoltaics / water bank), or JV / sell the shovel-ready "
-                  "position at the modeled HBU value.",
+        objective="Realize the HBU: sell or JV the shovel-ready, interconnect-"
+                  "ready position at the modeled HBU value (capital-light), or "
+                  "self-build the energy/compute node.",
         value_unlocked_usd=v.modeled_hbu_value,
         value_source="Full modeled HBU value realized",
-        capital_required_usd=v.energy_component * BUILD_CAPEX_PCT_OF_ENERGY,
+        # Land-owner's exit is a sale/JV: closing cost, not build capex.
+        capital_required_usd=v.modeled_hbu_value * DISPOSITION_PCT,
         timeline_months="12–36",
-        key_risks=["Construction cost / schedule overruns",
-                   "Offtake or buyer demand softening",
+        key_risks=["Buyer / offtake demand softening",
+                   "Appraisal or interconnection re-study",
                    "Technology / use-case obsolescence"],
         milestone_gate="Escrow Milestone 4 (Exit/JV Build)",
         exit_options=[
             "Sell the entitled, interconnect-ready parcel at modeled HBU value",
             "JV with a developer/operator, retaining carried interest",
-            "Self-build the HBU use and hold for cash flow",
+            f"Self-build (operator capex ~{build_capex/1e6:.0f}M @ "
+            f"${BUILD_CAPEX_PER_MW/1e6:.0f}M/MW — informational, not in the total)",
         ],
     )
     return [s1, s2, s3, s4]
