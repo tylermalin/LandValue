@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>LVE-LAP Latent Arbitrage Dossier</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      color: #1a1f2b; margin: 0; padding: 0; background: #f4f5f7;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .page { max-width: 900px; margin: 0 auto; padding: 40px; background: #fff; }
+    header.cover {
+      background: linear-gradient(135deg, #0b2545 0%, #13315c 100%);
+      color: #fff; padding: 48px 40px; margin: -40px -40px 32px -40px;
+    }
+    header.cover h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: -0.5px; }
+    header.cover .sub { opacity: 0.8; font-size: 14px; }
+    header.cover .meta { margin-top: 20px; font-size: 12px; opacity: 0.7; }
+    h2 { font-size: 18px; border-bottom: 2px solid #0b2545; padding-bottom: 6px;
+         margin-top: 36px; color: #0b2545; }
+    .summary-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+    .summary-table th { background: #0b2545; color: #fff; text-align: left; padding: 8px 10px; }
+    .summary-table td { padding: 8px 10px; border-bottom: 1px solid #e2e5ea; }
+    .summary-table tr:nth-child(even) td { background: #f8f9fb; }
+    .las-badge {
+      display: inline-block; min-width: 44px; text-align: center; font-weight: 700;
+      color: #fff; padding: 3px 8px; border-radius: 4px; background: #2e7d32;
+    }
+    .las-mid { background: #f59e0b; }
+    .las-low { background: #9ca3af; }
+    .parcel-card {
+      border: 1px solid #e2e5ea; border-radius: 8px; padding: 24px; margin: 20px 0;
+      page-break-inside: avoid;
+    }
+    .parcel-card h3 { margin: 0 0 4px; font-size: 20px; color: #0b2545; }
+    .parcel-card .loc { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+    .metrics { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
+    .metric {
+      flex: 1 1 140px; background: #f4f5f7; border-radius: 6px; padding: 12px 14px;
+    }
+    .metric .label { font-size: 11px; text-transform: uppercase; color: #6b7280;
+                     letter-spacing: 0.4px; }
+    .metric .value { font-size: 20px; font-weight: 700; color: #0b2545; margin-top: 2px; }
+    .metric .value.pos { color: #2e7d32; }
+    .breakdown { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+    .breakdown td { padding: 5px 8px; border-bottom: 1px solid #eef0f3; }
+    .breakdown td.w { color: #6b7280; width: 210px; }
+    .breakdown td.note { color: #6b7280; font-style: italic; }
+    .bar-wrap { background: #e2e5ea; border-radius: 3px; height: 8px; width: 120px; display: inline-block; vertical-align: middle; }
+    .bar { background: #13315c; height: 8px; border-radius: 3px; }
+    .roadmap { display: flex; gap: 10px; margin-top: 12px; }
+    .stage {
+      flex: 1; background: #0b2545; color: #fff; border-radius: 6px; padding: 12px;
+      font-size: 11px;
+    }
+    .stage .n { font-size: 22px; font-weight: 700; opacity: 0.35; }
+    .stage .t { font-weight: 700; margin: 2px 0 6px; font-size: 12px; }
+    footer { margin-top: 40px; font-size: 10px; color: #9ca3af; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header class="cover">
+    <h1>Land Value Engine — Latent Arbitrage Dossier</h1>
+    <div class="sub">Institutional-grade diagnostic roadmap · Western US corridor (NV · AZ · UT · NM)</div>
+    <div class="meta">Generated {{ generated_at }} · {{ count }} ranked anomalies · Confidential</div>
+  </header>
+
+  <h2>Top Latent Arbitrage Matrix</h2>
+  <table class="summary-table">
+    <thead>
+      <tr>
+        <th>#</th><th>Parcel</th><th>Location</th><th>Acres</th>
+        <th>Asking</th><th>Modeled HBU</th><th>Multiple</th><th>LAS</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for rp in parcels %}
+      <tr>
+        <td>{{ rp.rank }}</td>
+        <td>{{ rp.parcel.parcel_id }}</td>
+        <td>{{ rp.parcel.county }}, {{ rp.parcel.state }}</td>
+        <td>{{ "%.0f"|format(rp.parcel.acres) }}</td>
+        <td>{{ rp.parcel.asking_price | currency }}</td>
+        <td>{{ rp.valuation.modeled_hbu_value | currency }}</td>
+        <td>{{ rp.valuation.arbitrage_multiple }}x</td>
+        <td>
+          {% set s = rp.score.total %}
+          <span class="las-badge {% if s < 40 %}las-low{% elif s < 65 %}las-mid{% endif %}">{{ s }}</span>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Parcel Diagnostics</h2>
+  {% for rp in parcels %}
+  <div class="parcel-card">
+    <h3>#{{ rp.rank }} — {{ rp.parcel.parcel_id }}</h3>
+    <div class="loc">{{ rp.parcel.county }} County, {{ rp.parcel.state }} ·
+      {{ "%.0f"|format(rp.parcel.acres) }} acres ·
+      {{ (rp.parcel.asking_price / rp.parcel.acres) | currency }}/acre</div>
+
+    <div class="metrics">
+      <div class="metric"><div class="label">Asking Price</div>
+        <div class="value">{{ rp.parcel.asking_price | currency }}</div></div>
+      <div class="metric"><div class="label">Modeled HBU Value</div>
+        <div class="value">{{ rp.valuation.modeled_hbu_value | currency }}</div></div>
+      <div class="metric"><div class="label">Arbitrage Multiple</div>
+        <div class="value pos">{{ rp.valuation.arbitrage_multiple }}x</div></div>
+      <div class="metric"><div class="label">Latent Arbitrage Score</div>
+        <div class="value">{{ rp.score.total }}/100</div></div>
+    </div>
+
+    <h4 style="margin:14px 0 4px;font-size:13px;color:#0b2545;">Spatial & Infrastructure Intelligence</h4>
+    <table class="breakdown">
+      {% set sd = rp.score.as_dict() %}
+      {% for key, label in [
+          ('price_arbitrage','Price Arbitrage (30%)'),
+          ('days_on_market','Days-on-Market / Lazy Listing (20%)'),
+          ('infrastructure_headroom','Infrastructure Headroom (40%)'),
+          ('resource_optionality','Resource Optionality (10%)') ] %}
+      <tr>
+        <td class="w">{{ label }}</td>
+        <td>
+          <span class="bar-wrap"><span class="bar" style="width: {{ (sd[key] * 1.2)|round }}px;"></span></span>
+          {{ sd[key] }}
+        </td>
+        <td class="note">{{ rp.score.notes.get(key, '') }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    <h4 style="margin:16px 0 4px;font-size:13px;color:#0b2545;">HBU Value Composition</h4>
+    <table class="breakdown">
+      <tr><td class="w">Energy / Compute (interconnect headroom)</td><td>{{ rp.valuation.energy_component | currency }}</td></tr>
+      <tr><td class="w">Water Banking (appurtenant rights)</td><td>{{ rp.valuation.water_component | currency }}</td></tr>
+      <tr><td class="w">Resource Optionality Premium</td><td>{{ rp.valuation.resource_component | currency }}</td></tr>
+      <tr><td class="w">Raw Acreage Floor</td><td>{{ rp.valuation.acreage_component | currency }}</td></tr>
+    </table>
+
+    {% if rp.parcel.water_right_type %}
+    <table class="breakdown">
+      <tr>
+        <td class="w">Appurtenant Water Right</td>
+        <td>
+          {{ "%.0f"|format(rp.parcel.water_rights_acre_feet) }} AF ·
+          {{ rp.parcel.water_right_type }} ·
+          status: {{ rp.parcel.water_right_status or "unknown" }}
+          {% if rp.parcel.water_right_priority_date %}· priority {{ rp.parcel.water_right_priority_date }}{% endif %}
+        </td>
+      </tr>
+    </table>
+    {% endif %}
+
+    <h4 style="margin:16px 0 4px;font-size:13px;color:#0b2545;">Execution Roadmap</h4>
+    <div class="roadmap">
+      {% for stage in roadmap %}
+      <div class="stage">
+        <div class="n">{{ stage.stage }}</div>
+        <div class="t">{{ stage.title }}</div>
+        <div>{{ stage.detail }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <footer>
+    Land Value Engine &amp; Latent Arbitrage Protocol (LVE-LAP) ·
+    Modeled figures are diagnostic estimates, not appraisals or investment advice.
+  </footer>
+</div>
+</body>
+</html>

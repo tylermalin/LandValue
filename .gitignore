@@ -1,0 +1,32 @@
+# Credentials — never commit
+.env
+.env.local
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# Generated output
+output_reports/*.pdf
+output_reports/*.html
+!output_reports/.gitkeep
+
+# Real GIS data fetched by data_loaders.py (large, regenerable).
+# Committed small samples under data/gis/samples/ are NOT matched by this.
+/data/gis/*.geojson
+
+# Generated reference DB (re-seed with data/db/seed_water_rights.py)
+/data/db/*.sqlite
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

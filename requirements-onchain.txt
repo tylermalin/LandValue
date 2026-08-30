@@ -1,0 +1,4 @@
+-r requirements.txt
+# Bridge from the scored parcels to the on-chain registration payload.
+# keccak256 (to match Solidity parcel IDs). No transactions are signed/sent here.
+eth-utils>=2.3
