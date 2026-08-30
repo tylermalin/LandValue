@@ -49,19 +49,22 @@ EXECUTION_ROADMAP = [
 
 @dataclass
 class RankedParcel:
-    """A scored + valued parcel ready for rendering."""
+    """A scored + valued parcel ready for rendering — the full opportunity."""
 
     parcel: Parcel
     score: ScoreBreakdown
     valuation: Valuation
     rank: int = 0
+    confidence: "object" = None       # ConfidenceBreakdown (set in rank_parcels)
+    lifecycle: list = None            # List[LifecycleStage]
+    lifecycle_summary: "object" = None  # LifecycleSummary
 
 
 def _currency(value: float) -> str:
     return f"${value:,.0f}"
 
 
-def _build_context(ranked: List[RankedParcel]) -> dict:
+def _build_context(ranked: List[RankedParcel], methodology_sections=None) -> dict:
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
     return {
         "generated_at": generated,
@@ -69,6 +72,7 @@ def _build_context(ranked: List[RankedParcel]) -> dict:
         "parcels": ranked,
         "currency": _currency,
         "count": len(ranked),
+        "methodology": methodology_sections or [],
     }
 
 
@@ -116,7 +120,8 @@ def generate_dossier(ranked: List[RankedParcel], cfg) -> Path:
     Returns the path to the primary artifact (PDF if produced, else HTML).
     """
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
-    ctx = _build_context(ranked)
+    from methodology import methodology as _methodology
+    ctx = _build_context(ranked, methodology_sections=_methodology(cfg))
     html = _render_html(ctx, cfg.template_dir)
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")

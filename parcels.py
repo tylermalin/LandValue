@@ -38,6 +38,8 @@ class Parcel:
     # Enriched by the spatial stage (None until enriched).
     transmission_distance_miles: Optional[float] = None
     nearest_substation_headroom_mw: float = 0.0
+    nearest_substation_name: Optional[str] = None
+    headroom_is_estimated: bool = False  # True when headroom is a voltage proxy
     surface_water_distance_miles: Optional[float] = None  # USGS NHD proximity
 
     # Resource optionality
@@ -49,6 +51,13 @@ class Parcel:
     water_right_type: Optional[str] = None
     water_right_status: Optional[str] = None
     water_right_priority_date: Optional[str] = None
+
+    # Provenance / source documents (for confidence + actionable links).
+    source: str = "unknown"          # e.g. "apify:<actor>", "mock", "synthetic"
+    listing_url: Optional[str] = None
+    assessor_url: Optional[str] = None
+    apn: Optional[str] = None         # assessor parcel number
+    source_date: Optional[str] = None
 
     # Populated by the spatial gate; True means it survived filtering.
     passes_spatial_gate: bool = False
@@ -127,6 +136,11 @@ def _row_to_parcel(row: dict) -> Optional[Parcel]:
         water_rights_acre_feet=num("waterRightsAcreFeet", "waterRights"),
         geothermal_signature=bool(row.get("geothermal", False)),
         mineral_claims=bool(row.get("mineralClaims", False)),
+        source="apify",
+        listing_url=(row.get("url") or row.get("listingUrl") or row.get("link") or None),
+        apn=(str(row["apn"]) if row.get("apn") else
+             (str(row["parcelNumber"]) if row.get("parcelNumber") else None)),
+        source_date=(str(row["listedDate"]) if row.get("listedDate") else None),
     )
 
 
@@ -136,8 +150,11 @@ def mock_parcels() -> List["Parcel"]:
 
     Coordinates are placed near the mock transmission lines/substations in
     data/gis so the spatial stage produces meaningful joins out of the box.
+
+    Provenance fields carry illustrative example.com links so the dossier's
+    "source documents" section renders in demos; live data supplies real URLs.
     """
-    return [
+    parcels = [
         Parcel(
             parcel_id="NV-ESM-0417",
             county="Esmeralda",
@@ -151,6 +168,10 @@ def mock_parcels() -> List["Parcel"]:
             water_rights_acre_feet=180.0,
             geothermal_signature=True,
             mineral_claims=True,
+            listing_url="https://example.com/listing/NV-ESM-0417",
+            assessor_url="https://example.com/assessor/esmeralda/007-041-17",
+            apn="007-041-17",
+            source_date="2025-11-02",
         ),
         Parcel(
             parcel_id="AZ-MOH-1188",
@@ -209,6 +230,12 @@ def mock_parcels() -> List["Parcel"]:
             has_legal_easement=False,
         ),
     ]
+    for p in parcels:
+        if p.source == "unknown":
+            p.source = "mock"
+        if p.listing_url is None:
+            p.listing_url = f"https://example.com/listing/{p.parcel_id}"
+    return parcels
 
 
 def ingest(cfg) -> List["Parcel"]:
@@ -281,6 +308,7 @@ def synthetic_near_infrastructure(
                                     if rng.random() < 0.4 else 0.0),
             geothermal_signature=(rng.random() < 0.2),
             mineral_claims=(rng.random() < 0.25),
+            source="synthetic",
         ))
     return parcels
 
@@ -340,5 +368,6 @@ def synthetic_corridor(n: int = 120, seed: int = 42) -> List["Parcel"]:
                                     if has_water and rng.random() < 0.5 else 0.0),
             geothermal_signature=(rng.random() < geo_bias),
             mineral_claims=(rng.random() < min_bias),
+            source="synthetic",
         ))
     return parcels

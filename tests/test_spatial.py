@@ -47,14 +47,15 @@ def test_low_voltage_lines_are_excluded(ctx):
 
 
 def test_substations_loaded_with_headroom(ctx):
-    headrooms = sorted(h for _, _, h, _ in ctx.substations)
+    headrooms = sorted(h for _, _, h, _, _ in ctx.substations)
     assert 45.0 in headrooms and 60.0 in headrooms
 
 
 def test_nearest_substation_returns_headroom(ctx):
-    headroom, name = ctx.nearest_substation(37.782, -117.235)
+    headroom, name, estimated = ctx.nearest_substation(37.782, -117.235)
     assert headroom == 45.0
     assert "Esmeralda" in name
+    assert estimated is False  # sample data has no estimated flag
 
 
 # --- gating ------------------------------------------------------------------

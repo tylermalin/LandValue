@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from typing import List
 
 from config import Config, ConfigError, load_config
+from confidence import score_confidence
+from lifecycle import build_lifecycle, summarize_lifecycle
 from parcels import Parcel, ingest
 from report_generator import RankedParcel, generate_dossier
 from scoring import score_parcel
@@ -45,7 +47,13 @@ def rank_parcels(parcels: List[Parcel], cfg: Config) -> List[RankedParcel]:
             surface_water_bonus_miles=cfg.surface_water_bonus_miles,
         )
         valuation = model_hbu(p, surface_water_bonus_miles=cfg.surface_water_bonus_miles)
-        ranked.append(RankedParcel(parcel=p, score=score, valuation=valuation))
+        conf = score_confidence(p)
+        stages = build_lifecycle(p, valuation)
+        summary = summarize_lifecycle(stages, valuation)
+        ranked.append(RankedParcel(
+            parcel=p, score=score, valuation=valuation,
+            confidence=conf, lifecycle=stages, lifecycle_summary=summary,
+        ))
 
     ranked.sort(key=lambda rp: rp.score.total, reverse=True)
     for i, rp in enumerate(ranked, start=1):

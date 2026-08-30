@@ -138,8 +138,8 @@ class SpatialContext:
             if kv >= MIN_LINE_KV:
                 self.lines.extend(_line_coords(feat.get("geometry", {})))
 
-        # Substations: (lon, lat, headroom_mw, name).
-        self.substations: List[Tuple[float, float, float, str]] = []
+        # Substations: (lon, lat, headroom_mw, name, headroom_estimated).
+        self.substations: List[Tuple[float, float, float, str, bool]] = []
         for feat in subs_fc.get("features", []):
             geom = feat.get("geometry", {}) or {}
             if geom.get("type") != "Point":
@@ -152,7 +152,8 @@ class SpatialContext:
             except (TypeError, ValueError):
                 headroom = 0.0
             name = str(props.get("name", props.get("NAME", "substation")))
-            self.substations.append((lon, lat, headroom, name))
+            estimated = bool(props.get("headroom_estimated", False))
+            self.substations.append((lon, lat, headroom, name, estimated))
 
         # Waterbodies reduced to (centroid_lon, centroid_lat, radius_miles) and
         # bucketed into a coarse lon/lat grid so proximity queries touch only a
@@ -186,17 +187,17 @@ class SpatialContext:
                     best = d
         return None if best is math.inf else best
 
-    def nearest_substation(self, lat: float, lon: float) -> Tuple[float, str]:
-        """Return (headroom_mw, name) of the geographically nearest substation."""
+    def nearest_substation(self, lat: float, lon: float) -> Tuple[float, str, bool]:
+        """Return (headroom_mw, name, headroom_estimated) of the nearest substation."""
         if not self.substations:
-            return 0.0, ""
+            return 0.0, "", False
         best_d = math.inf
-        best = (0.0, "")
-        for lon_s, lat_s, headroom, name in self.substations:
+        best = (0.0, "", False)
+        for lon_s, lat_s, headroom, name, estimated in self.substations:
             d = _haversine_miles(lat, lon, lat_s, lon_s)
             if d < best_d:
                 best_d = d
-                best = (headroom, name)
+                best = (headroom, name, estimated)
         return best
 
     def nearest_water_distance_miles(self, lat: float, lon: float) -> Optional[float]:
@@ -234,8 +235,10 @@ def enrich_and_filter(parcels: List[Parcel], ctx: SpatialContext, cfg) -> List[P
 
         # --- Spatial enrichment ---
         p.transmission_distance_miles = ctx.nearest_line_distance_miles(p.lat, p.lon)
-        headroom, _sub_name = ctx.nearest_substation(p.lat, p.lon)
+        headroom, sub_name, headroom_estimated = ctx.nearest_substation(p.lat, p.lon)
         p.nearest_substation_headroom_mw = headroom
+        p.nearest_substation_name = sub_name or None
+        p.headroom_is_estimated = headroom_estimated
         p.surface_water_distance_miles = ctx.nearest_water_distance_miles(p.lat, p.lon)
 
         # --- Transmission buffer gate ---

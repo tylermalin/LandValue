@@ -57,6 +57,19 @@
     }
     .stage .n { font-size: 22px; font-weight: 700; opacity: 0.35; }
     .stage .t { font-weight: 700; margin: 2px 0 6px; font-size: 12px; }
+    .conf { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px;
+            font-weight:700; color:#fff; vertical-align:middle; }
+    .conf-high { background:#2e7d32; } .conf-medium { background:#f59e0b; }
+    .conf-low { background:#c0392b; }
+    .prov { display:inline-block; min-width:70px; text-align:center; padding:1px 6px;
+            border-radius:3px; font-size:9px; font-weight:700; text-transform:uppercase;
+            letter-spacing:0.3px; margin-right:4px; }
+    .prov-measured { background:#d4edda; color:#1e7e34; }
+    .prov-estimated { background:#fff3cd; color:#856404; }
+    .prov-assumed { background:#e2e3e5; color:#495057; }
+    .prov-missing { background:#f8d7da; color:#721c24; }
+    .lifecycle th { background:#eef0f3; text-align:left; padding:6px 8px; font-size:11px;
+                    color:#0b2545; }
     footer { margin-top: 40px; font-size: 10px; color: #9ca3af; text-align: center; }
   </style>
 </head>
@@ -112,6 +125,11 @@
         <div class="value pos">{{ rp.valuation.arbitrage_multiple }}x</div></div>
       <div class="metric"><div class="label">Latent Arbitrage Score</div>
         <div class="value">{{ rp.score.total }}/100</div></div>
+      {% if rp.confidence %}
+      <div class="metric"><div class="label">Confidence</div>
+        <div class="value">{{ rp.confidence.total_pct }}%
+          <span class="conf conf-{{ rp.confidence.label|lower }}">{{ rp.confidence.label }}</span></div></div>
+      {% endif %}
     </div>
 
     <h4 style="margin:14px 0 4px;font-size:13px;color:#0b2545;">Spatial & Infrastructure Intelligence</h4>
@@ -158,18 +176,78 @@
     </table>
     {% endif %}
 
-    <h4 style="margin:16px 0 4px;font-size:13px;color:#0b2545;">Execution Roadmap</h4>
-    <div class="roadmap">
-      {% for stage in roadmap %}
-      <div class="stage">
-        <div class="n">{{ stage.stage }}</div>
-        <div class="t">{{ stage.title }}</div>
-        <div>{{ stage.detail }}</div>
-      </div>
+    {% if rp.confidence %}
+    <h4 style="margin:16px 0 4px;font-size:13px;color:#0b2545;">
+      Confidence — {{ rp.confidence.total_pct }}%
+      <span class="conf conf-{{ rp.confidence.label|lower }}">{{ rp.confidence.label }}</span>
+      <span class="note">(how much to trust the score, by data provenance)</span>
+    </h4>
+    <table class="breakdown">
+      {% for fct in rp.confidence.factors %}
+      <tr>
+        <td class="w">{{ fct.label }}</td>
+        <td style="white-space:nowrap;">
+          <span class="prov prov-{{ fct.level.value }}">{{ fct.level.value }}</span>
+          {{ (fct.score * 100)|round|int }}%
+        </td>
+        <td class="note">{{ fct.rationale }}</td>
+      </tr>
       {% endfor %}
+    </table>
+    {% endif %}
+
+    <h4 style="margin:16px 0 4px;font-size:13px;color:#0b2545;">Source Documents</h4>
+    <table class="breakdown">
+      <tr><td class="w">Source</td><td>{{ rp.parcel.source }}{% if rp.parcel.source_date %} · {{ rp.parcel.source_date }}{% endif %}</td></tr>
+      {% if rp.parcel.listing_url %}<tr><td class="w">Listing</td><td><a href="{{ rp.parcel.listing_url }}">{{ rp.parcel.listing_url }}</a></td></tr>{% endif %}
+      {% if rp.parcel.assessor_url %}<tr><td class="w">Assessor record</td><td><a href="{{ rp.parcel.assessor_url }}">{{ rp.parcel.assessor_url }}</a>{% if rp.parcel.apn %} · APN {{ rp.parcel.apn }}{% endif %}</td></tr>
+      {% elif rp.parcel.apn %}<tr><td class="w">APN</td><td>{{ rp.parcel.apn }}</td></tr>{% endif %}
+      {% if rp.parcel.nearest_substation_name %}<tr><td class="w">Nearest substation</td><td>{{ rp.parcel.nearest_substation_name }}{% if rp.parcel.headroom_is_estimated %} · headroom estimated (voltage proxy){% endif %}</td></tr>{% endif %}
+    </table>
+
+    {% if rp.lifecycle %}
+    <h4 style="margin:16px 0 4px;font-size:13px;color:#0b2545;">Lifecycle Optimization</h4>
+    <table class="breakdown lifecycle">
+      <thead><tr>
+        <th>Stage</th><th>Value unlocked</th><th>Capital</th><th>Timeline</th><th>Escrow gate</th>
+      </tr></thead>
+      {% for st in rp.lifecycle %}
+      <tr>
+        <td class="w"><strong>{{ st.stage }}. {{ st.title }}</strong><br>
+          <span class="note">{{ st.objective }}</span></td>
+        <td>{{ st.value_unlocked_usd | currency }}<br>
+          <span class="note">{{ st.value_source }}</span></td>
+        <td>{{ st.capital_required_usd | currency }}</td>
+        <td>{{ st.timeline_months }} mo</td>
+        <td class="note">{{ st.milestone_gate }}</td>
+      </tr>
+      <tr><td colspan="5" class="note">
+        Risks: {{ st.key_risks | join('; ') }}
+        {% if st.exit_options %}<br>Exit options: {{ st.exit_options | join(' · ') }}{% endif %}
+      </td></tr>
+      {% endfor %}
+    </table>
+    <div class="note" style="margin-top:6px;">
+      Modeled staged capital {{ rp.lifecycle_summary.total_capital_usd | currency }} ·
+      modeled HBU {{ rp.lifecycle_summary.modeled_hbu_value_usd | currency }} ·
+      modeled net {{ rp.lifecycle_summary.modeled_net_value_usd | currency }}
+      (framing figures — see Methodology)
     </div>
+    {% endif %}
   </div>
   {% endfor %}
+
+  {% if methodology %}
+  <h2>Methodology &amp; Assumptions</h2>
+  {% for section in methodology %}
+  <h4 style="margin:14px 0 4px;font-size:13px;color:#0b2545;">{{ section.title }}</h4>
+  <table class="breakdown">
+    {% for label, value in section.rows %}
+    <tr><td class="w">{{ label }}</td><td>{{ value }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endfor %}
+  {% endif %}
 
   <footer>
     Land Value Engine &amp; Latent Arbitrage Protocol (LVE-LAP) ·
