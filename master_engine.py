@@ -25,6 +25,7 @@ from confidence import score_confidence
 from lifecycle import build_lifecycle, summarize_lifecycle
 from parcels import Parcel, ingest
 from report_generator import RankedParcel, generate_dossier
+from sanity import sanity_flags
 from scoring import score_parcel
 from spatial import SpatialContext, enrich_and_filter
 from valuation import model_hbu
@@ -50,9 +51,11 @@ def rank_parcels(parcels: List[Parcel], cfg: Config) -> List[RankedParcel]:
         conf = score_confidence(p)
         stages = build_lifecycle(p, valuation)
         summary = summarize_lifecycle(stages, valuation)
+        flags = sanity_flags(p, score, valuation, conf)
         ranked.append(RankedParcel(
             parcel=p, score=score, valuation=valuation,
             confidence=conf, lifecycle=stages, lifecycle_summary=summary,
+            flags=flags,
         ))
 
     ranked.sort(key=lambda rp: rp.score.total, reverse=True)

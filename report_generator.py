@@ -58,6 +58,7 @@ class RankedParcel:
     confidence: "object" = None       # ConfidenceBreakdown (set in rank_parcels)
     lifecycle: list = None            # List[LifecycleStage]
     lifecycle_summary: "object" = None  # LifecycleSummary
+    flags: list = None                # List[SanityFlag]
 
 
 def _currency(value: float) -> str:

@@ -97,6 +97,9 @@ def _to_frame(ranked: list[RankedParcel]) -> pd.DataFrame:
             "Resource": s.resource_optionality * 100,
             "Conf%": rp.confidence.total_pct if rp.confidence else None,
             "Conf": rp.confidence.label if rp.confidence else None,
+            "⚑": len(rp.flags or []),
+            "flag_msgs": [{"level": fl.level, "message": fl.message}
+                          for fl in (rp.flags or [])],
             "Headroom MW": p.nearest_substation_headroom_mw,
             "Water AF": p.water_rights_acre_feet,
             # Object columns for the detail panel (pickled by the cache).
@@ -185,7 +188,7 @@ except ImportError:
 st.subheader(f"Top {top_n} anomalies")
 top_df = df.sort_values("LAS", ascending=False).head(top_n)
 st.dataframe(
-    top_df.drop(columns=["lat", "lon", "conf_factors", "lifecycle"]),
+    top_df.drop(columns=["lat", "lon", "conf_factors", "lifecycle", "flag_msgs"]),
     use_container_width=True, hide_index=True,
     column_config={
         "Asking": st.column_config.NumberColumn(format="$%d"),
@@ -203,6 +206,12 @@ st.dataframe(
 st.subheader("Parcel detail")
 choice = st.selectbox("Select a parcel", top_df["Parcel"].tolist())
 row = top_df[top_df["Parcel"] == choice].iloc[0]
+
+for fl in row["flag_msgs"]:
+    if fl["level"] == "warn":
+        st.error(f"⚠ DATA WARNING — {fl['message']}")
+    else:
+        st.warning(f"⚑ CAUTION — {fl['message']}")
 
 d1, d2 = st.columns(2)
 with d1:

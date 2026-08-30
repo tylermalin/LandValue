@@ -70,6 +70,11 @@
     .prov-missing { background:#f8d7da; color:#721c24; }
     .lifecycle th { background:#eef0f3; text-align:left; padding:6px 8px; font-size:11px;
                     color:#0b2545; }
+    .flags { margin: 12px 0; }
+    .flag { font-size: 12px; padding: 7px 10px; border-radius: 5px; margin-bottom: 5px;
+            border-left: 4px solid; }
+    .flag-warn { background:#fdecea; color:#8a1c12; border-color:#c0392b; font-weight:600; }
+    .flag-caution { background:#fff8e1; color:#7a5b00; border-color:#f59e0b; }
     footer { margin-top: 40px; font-size: 10px; color: #9ca3af; text-align: center; }
   </style>
 </head>
@@ -115,6 +120,17 @@
     <div class="loc">{{ rp.parcel.county }} County, {{ rp.parcel.state }} ·
       {{ "%.0f"|format(rp.parcel.acres) }} acres ·
       {{ (rp.parcel.asking_price / rp.parcel.acres) | currency }}/acre</div>
+
+    {% if rp.flags %}
+    <div class="flags">
+      {% for fl in rp.flags %}
+      <div class="flag flag-{{ fl.level }}">
+        {% if fl.level == 'warn' %}⚠ DATA WARNING{% else %}⚑ CAUTION{% endif %} —
+        {{ fl.message }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
 
     <div class="metrics">
       <div class="metric"><div class="label">Asking Price</div>
