@@ -44,7 +44,7 @@ def rank_parcels(parcels: List[Parcel], cfg: Config) -> List[RankedParcel]:
             min_headroom_mw=cfg.min_substation_headroom_mw,
             surface_water_bonus_miles=cfg.surface_water_bonus_miles,
         )
-        valuation = model_hbu(p)
+        valuation = model_hbu(p, surface_water_bonus_miles=cfg.surface_water_bonus_miles)
         ranked.append(RankedParcel(parcel=p, score=score, valuation=valuation))
 
     ranked.sort(key=lambda rp: rp.score.total, reverse=True)

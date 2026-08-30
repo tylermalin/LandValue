@@ -138,6 +138,9 @@
       <tr><td class="w">Energy / Compute (interconnect headroom)</td><td>{{ rp.valuation.energy_component | currency }}</td></tr>
       <tr><td class="w">Water Banking (appurtenant rights)</td><td>{{ rp.valuation.water_component | currency }}</td></tr>
       <tr><td class="w">Resource Optionality Premium</td><td>{{ rp.valuation.resource_component | currency }}</td></tr>
+      {% if rp.valuation.surface_water_component > 0 %}
+      <tr><td class="w">Surface-Water Proximity Premium</td><td>{{ rp.valuation.surface_water_component | currency }}</td></tr>
+      {% endif %}
       <tr><td class="w">Raw Acreage Floor</td><td>{{ rp.valuation.acreage_component | currency }}</td></tr>
     </table>
 
