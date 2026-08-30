@@ -71,6 +71,20 @@ class Parcel:
 
 
 # --- Live ingestion (Apify) --------------------------------------------------
+def build_run_input(cfg) -> dict:
+    """Build the actor run input matching the Land.com Scraper schema.
+
+    Schema (rigelbytes/landdotcom-scraper): zip_codes (required array),
+    listing_type ("for_sale"), proxyConfiguration. The actor is zip-based —
+    price/acre and state filtering happen downstream in our own gates.
+    """
+    return {
+        "zip_codes": list(cfg.target_zips),
+        "listing_type": "for_sale",
+        "proxyConfiguration": {"useApifyProxy": True},
+    }
+
+
 def fetch_live_parcels(cfg) -> List["Parcel"]:
     """Run the configured Apify actor and normalize rows into Parcels.
 
@@ -79,13 +93,14 @@ def fetch_live_parcels(cfg) -> List["Parcel"]:
     """
     from apify_client import ApifyClient  # imported lazily; live-mode only
 
+    if not cfg.target_zips:
+        raise ValueError(
+            "Live mode needs TARGET_ZIPS — the Land.com scraper is zip-based. "
+            "Set TARGET_ZIPS in .env (e.g. 89013,86021,84034,88310)."
+        )
+
     client = ApifyClient(cfg.apify_token)
-    run_input = {
-        "states": cfg.target_states,
-        "zipCodes": cfg.target_zips,
-        "maxPricePerAcre": cfg.max_price_per_acre,
-    }
-    run = client.actor(cfg.scraper_actor_id).call(run_input=run_input)
+    run = client.actor(cfg.scraper_actor_id).call(run_input=build_run_input(cfg))
 
     parcels: List[Parcel] = []
     dataset_id = run.get("defaultDatasetId") if run else None
@@ -121,8 +136,17 @@ def _row_to_parcel(row: dict) -> Optional[Parcel]:
     if lat == 0.0 and lon == 0.0:
         return None
 
+    listing_url = (row.get("canonicalUrl") or row.get("url")
+                   or row.get("listingUrl") or row.get("link") or None)
+    # The Land.com scraper output has no stable id; fall back to the canonical
+    # URL (unique), then a composite, so parcels remain distinguishable.
+    parcel_id = str(
+        row.get("id") or row.get("parcelId") or row.get("mlsId") or listing_url
+        or f"{row.get('county', 'Unknown')}-{row.get('zip', '')}-{int(price)}"
+    )
+
     return Parcel(
-        parcel_id=str(row.get("id") or row.get("parcelId") or row.get("mlsId") or "unknown"),
+        parcel_id=parcel_id,
         county=str(row.get("county") or row.get("countyName") or "Unknown"),
         state=str(row.get("state") or row.get("stateCode") or "").upper()[:2],
         lat=lat,
@@ -137,7 +161,7 @@ def _row_to_parcel(row: dict) -> Optional[Parcel]:
         geothermal_signature=bool(row.get("geothermal", False)),
         mineral_claims=bool(row.get("mineralClaims", False)),
         source="apify",
-        listing_url=(row.get("url") or row.get("listingUrl") or row.get("link") or None),
+        listing_url=listing_url,
         apn=(str(row["apn"]) if row.get("apn") else
              (str(row["parcelNumber"]) if row.get("parcelNumber") else None)),
         source_date=(str(row["listedDate"]) if row.get("listedDate") else None),

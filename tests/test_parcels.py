@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from parcels import Parcel, _row_to_parcel, ingest, mock_parcels, synthetic_corridor
+from dataclasses import dataclass, field
+from typing import List
+
+from parcels import (
+    Parcel, _row_to_parcel, build_run_input, ingest, mock_parcels,
+    synthetic_corridor,
+)
 
 
 def test_price_per_acre():
@@ -79,3 +85,43 @@ def test_synthetic_corridor_size_and_states():
     assert len(parcels) == 200
     assert {p.state for p in parcels} <= {"NV", "AZ", "UT", "NM"}
     assert all(p.acres > 0 and p.asking_price > 0 for p in parcels)
+
+
+# --- live-mode wiring (schema-correct, no network) ---------------------------
+@dataclass
+class _Cfg:
+    target_zips: List[str] = field(default_factory=lambda: ["89013", "86021"])
+
+
+def test_build_run_input_matches_actor_schema():
+    ri = build_run_input(_Cfg())
+    assert ri["zip_codes"] == ["89013", "86021"]     # actor's required field name
+    assert ri["listing_type"] == "for_sale"
+    assert ri["proxyConfiguration"]["useApifyProxy"] is True
+    # Must NOT carry the old wrong keys.
+    assert "zipCodes" not in ri and "states" not in ri
+
+
+def test_row_to_parcel_maps_landdotcom_fields():
+    # Real Land.com Scraper output field names.
+    row = {
+        "canonicalUrl": "https://www.land.com/property/abc-123/",
+        "county": "Esmeralda", "state": "NV", "zip": "89013",
+        "latitude": 37.78, "longitude": -117.23,
+        "acres": 640, "price": 920000,
+        "pricePerAcre": 1437, "description": "raw land, as-is",
+    }
+    p = _row_to_parcel(row)
+    assert p is not None
+    assert p.source == "apify"
+    assert p.listing_url == "https://www.land.com/property/abc-123/"
+    # No stable id in output -> falls back to the canonical URL.
+    assert p.parcel_id == "https://www.land.com/property/abc-123/"
+    assert p.state == "NV" and p.acres == 640.0 and p.asking_price == 920000.0
+
+
+def test_row_to_parcel_id_composite_fallback_without_url():
+    row = {"county": "Nye", "zip": "89049", "state": "NV",
+           "latitude": 38.0, "longitude": -116.9, "acres": 100, "price": 50000}
+    p = _row_to_parcel(row)
+    assert p.parcel_id == "Nye-89049-50000"
