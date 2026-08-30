@@ -37,6 +37,16 @@ def _las_color(score: float):
     return _COLOR_LOW
 
 
+def _conf_color(pct: float):
+    if pct is None:
+        return _COLOR_LOW
+    if pct >= 75:
+        return _COLOR_HIGH
+    if pct >= 50:
+        return _COLOR_MID
+    return _COLOR_LOW
+
+
 @st.cache_data(show_spinner=False)
 def _run_pipeline(dataset_size: int, max_price_per_acre: float,
                   min_headroom_mw: float, buffer_miles: float):
@@ -85,8 +95,18 @@ def _to_frame(ranked: list[RankedParcel]) -> pd.DataFrame:
             "DOM": s.days_on_market * 100,
             "Infra": s.infrastructure_headroom * 100,
             "Resource": s.resource_optionality * 100,
+            "Conf%": rp.confidence.total_pct if rp.confidence else None,
+            "Conf": rp.confidence.label if rp.confidence else None,
             "Headroom MW": p.nearest_substation_headroom_mw,
             "Water AF": p.water_rights_acre_feet,
+            # Object columns for the detail panel (pickled by the cache).
+            "conf_factors": rp.confidence.as_dict()["factors"] if rp.confidence else [],
+            "lifecycle": [
+                {"stage": st.stage, "title": st.title,
+                 "value": round(st.value_unlocked_usd), "capital": round(st.capital_required_usd),
+                 "timeline": st.timeline_months, "gate": st.milestone_gate}
+                for st in (rp.lifecycle or [])
+            ],
             "lat": p.lat,
             "lon": p.lon,
         })
@@ -105,24 +125,29 @@ buffer_mi = st.sidebar.slider("Transmission buffer (miles)", 1.0, 6.0, 3.0, step
 states = st.sidebar.multiselect("States", ["NV", "AZ", "UT", "NM"],
                                 default=["NV", "AZ", "UT", "NM"])
 min_las = st.sidebar.slider("Min LAS filter", 0, 100, 0, step=5)
+min_conf = st.sidebar.slider("Min confidence % filter", 0, 100, 0, step=5)
+color_by = st.sidebar.radio("Color map by", ["LAS", "Confidence"], horizontal=True)
 
 df, meta = _run_pipeline(dataset_size, float(max_ppa), float(min_mw), float(buffer_mi))
 
 # Post-pipeline display filters (cheap; not part of the cached pipeline run).
 if not df.empty:
-    df = df[df["State"].isin(states) & (df["LAS"] >= min_las)]
+    df = df[df["State"].isin(states) & (df["LAS"] >= min_las)
+            & (df["Conf%"].fillna(0) >= min_conf)]
 
 # --- Header + KPIs -----------------------------------------------------------
 st.title("Latent Arbitrage Matrix")
 st.caption("Western US corridor · NV · AZ · UT · NM — "
            "modeled diagnostics, not appraisals or investment advice.")
 
-c1, c2, c3, c4, c5 = st.columns(5)
+c1, c2, c3, c4, c5, c6 = st.columns(6)
 c1.metric("Ingested", meta["ingested"])
 c2.metric("Passed gates", meta["survivors"])
 c3.metric("Disqualified", meta["disqualified"])
-c4.metric("Water-rights enriched", meta["water_rights_matched"])
-c5.metric("Shown", len(df))
+c4.metric("Shown", len(df))
+avg_conf = round(df["Conf%"].dropna().mean(), 1) if not df.empty and df["Conf%"].notna().any() else 0.0
+c5.metric("Avg confidence", f"{avg_conf}%")
+c6.metric("High-confidence", int((df["Conf%"].fillna(0) >= 75).sum()) if not df.empty else 0)
 
 if df.empty:
     st.warning("No parcels match the current filters. Loosen the thresholds "
@@ -130,12 +155,15 @@ if df.empty:
     st.stop()
 
 # --- Map ---------------------------------------------------------------------
-st.subheader("Corridor map — sized & colored by LAS")
+st.subheader(f"Corridor map — sized by LAS, colored by {color_by}")
 try:
     import pydeck as pdk
 
     map_df = df.copy()
-    map_df["color"] = map_df["LAS"].apply(_las_color)
+    if color_by == "Confidence":
+        map_df["color"] = map_df["Conf%"].apply(_conf_color)
+    else:
+        map_df["color"] = map_df["LAS"].apply(_las_color)
     map_df["radius"] = (map_df["LAS"] * 60).clip(lower=1500)
     layer = pdk.Layer(
         "ScatterplotLayer", data=map_df,
@@ -144,18 +172,20 @@ try:
     )
     view = pdk.ViewState(latitude=float(map_df["lat"].mean()),
                          longitude=float(map_df["lon"].mean()), zoom=5)
-    tooltip = {"text": "{Parcel}\nLAS {LAS} · {Multiple}x\n${$/acre}/acre"}
+    tooltip = {"text": "{Parcel}\nLAS {LAS} · conf {Conf%}% ({Conf})\n{Multiple}x · ${$/acre}/acre"}
     st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view,
                              tooltip=tooltip))
+    st.caption("Green = high · amber = medium · grey/red = low. Toggle LAS vs "
+               "Confidence in the sidebar.")
 except ImportError:
     st.map(df[["lat", "lon"]])
-    st.caption("Install `pydeck` for LAS-colored markers and tooltips.")
+    st.caption("Install `pydeck` for colored markers and tooltips.")
 
 # --- Top-N matrix ------------------------------------------------------------
 st.subheader(f"Top {top_n} anomalies")
 top_df = df.sort_values("LAS", ascending=False).head(top_n)
 st.dataframe(
-    top_df.drop(columns=["lat", "lon"]),
+    top_df.drop(columns=["lat", "lon", "conf_factors", "lifecycle"]),
     use_container_width=True, hide_index=True,
     column_config={
         "Asking": st.column_config.NumberColumn(format="$%d"),
@@ -163,6 +193,8 @@ st.dataframe(
         "$/acre": st.column_config.NumberColumn(format="$%d"),
         "LAS": st.column_config.ProgressColumn(min_value=0, max_value=100,
                                                format="%.1f"),
+        "Conf%": st.column_config.ProgressColumn("Conf%", min_value=0,
+                                                 max_value=100, format="%.0f"),
         "Multiple": st.column_config.NumberColumn(format="%.2fx"),
     },
 )
@@ -178,6 +210,7 @@ with d1:
     st.metric("Asking", f"${row['Asking']:,.0f}")
     st.metric("Modeled HBU Value", f"${row['HBU Value']:,.0f}")
     st.metric("Arbitrage Multiple", f"{row['Multiple']}x")
+    st.metric("Confidence", f"{row['Conf%']}%  ({row['Conf']})")
 with d2:
     st.markdown("**LAS component breakdown**")
     st.bar_chart(pd.DataFrame({
@@ -185,3 +218,30 @@ with d2:
     }, index=["Price (30%)", "DOM (20%)", "Infra (40%)", "Resource (10%)"]))
     st.caption(f"Headroom {row['Headroom MW']:.0f} MW · "
                f"Water {row['Water AF']:.0f} AF · Total LAS {row['LAS']}")
+
+# Confidence pick-apart
+st.markdown(f"**Confidence — {row['Conf%']}% ({row['Conf']})** · by data provenance")
+factors = row["conf_factors"]
+if factors:
+    fdf = pd.DataFrame(factors)[["label", "level", "score", "rationale"]]
+    fdf.columns = ["Factor", "Provenance", "Score", "Why"]
+    st.dataframe(
+        fdf, use_container_width=True, hide_index=True,
+        column_config={"Score": st.column_config.ProgressColumn(
+            "Score", min_value=0, max_value=100, format="%d")},
+    )
+
+# Lifecycle optimization
+stages = row["lifecycle"]
+if stages:
+    st.markdown("**Lifecycle optimization**")
+    ldf = pd.DataFrame(stages)
+    ldf = ldf.rename(columns={"stage": "#", "title": "Stage", "value": "Value unlocked",
+                              "capital": "Capital", "timeline": "Timeline (mo)", "gate": "Escrow gate"})
+    st.dataframe(
+        ldf, use_container_width=True, hide_index=True,
+        column_config={
+            "Value unlocked": st.column_config.NumberColumn(format="$%d"),
+            "Capital": st.column_config.NumberColumn(format="$%d"),
+        },
+    )
