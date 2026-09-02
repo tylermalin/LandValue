@@ -58,6 +58,8 @@ class Parcel:
     assessor_url: Optional[str] = None
     apn: Optional[str] = None         # assessor parcel number
     source_date: Optional[str] = None
+    street_address: Optional[str] = None  # for geocoding fallback
+    coord_source: Optional[str] = None    # listing | county-apn | geocode
 
     # Populated by the spatial gate; True means it survived filtering.
     passes_spatial_gate: bool = False
@@ -71,19 +73,26 @@ class Parcel:
 
 
 # --- Live ingestion (Apify) --------------------------------------------------
-def build_run_input(cfg) -> dict:
-    """Build the actor run input matching the Land.com Scraper schema.
+# Default LandWatch searches for the corridor when SEARCH_URLS is unset.
+_DEFAULT_SEARCH_URLS = [
+    "https://www.landwatch.com/nevada-land-for-sale",
+    "https://www.landwatch.com/arizona-land-for-sale",
+    "https://www.landwatch.com/utah-land-for-sale",
+    "https://www.landwatch.com/new-mexico-land-for-sale",
+]
 
-    Schema (rigelbytes/landdotcom-scraper): zip_codes (required array),
-    listing_type ("for_sale"), proxyConfiguration. The actor is zip-based —
-    price/acre and state filtering happen downstream in our own gates.
+
+def build_run_input(cfg) -> dict:
+    """Build the actor run input for the memo23/landwatch-scraper (URL-driven).
+
+    Schema: startUrls (required landwatch.com URLs), maxItems (per-run cap —
+    bounds cost), proxy. This actor returns lat/lon, APN, and address — what the
+    spatial gates need. Corridor/price filtering happens in our own gates.
     """
     return {
-        "zip_codes": list(cfg.target_zips),
-        "listing_type": "for_sale",
-        # Land.com blocks datacenter IPs; the actor's own example uses residential.
-        "proxyConfiguration": {"useApifyProxy": True,
-                               "apifyProxyGroups": ["RESIDENTIAL"]},
+        "startUrls": list(cfg.search_urls) or list(_DEFAULT_SEARCH_URLS),
+        "maxItems": cfg.max_items,
+        "proxy": {"useApifyProxy": True, "apifyProxyGroups": ["RESIDENTIAL"]},
     }
 
 
@@ -94,12 +103,6 @@ def fetch_live_parcels(cfg) -> List["Parcel"]:
     guarded and unmappable rows are skipped rather than crashing the run.
     """
     from apify_client import ApifyClient  # imported lazily; live-mode only
-
-    if not cfg.target_zips:
-        raise ValueError(
-            "Live mode needs TARGET_ZIPS — the Land.com scraper is zip-based. "
-            "Set TARGET_ZIPS in .env (e.g. 89013,86021,84034,88310)."
-        )
 
     client = ApifyClient(cfg.apify_token)
     run = client.actor(cfg.scraper_actor_id).call(run_input=build_run_input(cfg))
@@ -124,24 +127,56 @@ def fetch_live_parcels(cfg) -> List["Parcel"]:
         return []
 
     parcels: List[Parcel] = []
+    blocked = 0
+    seen = 0
     for row in client.dataset(dataset_id).iterate_items():
+        seen += 1
+        if row.get("type") == "land_blocked":  # actor's anti-bot sentinel
+            blocked += 1
+            continue
         parcel = _row_to_parcel(row)
         if parcel is not None:
             parcels.append(parcel)
+    # If every record was a block sentinel, surface it rather than "0 results".
+    if not parcels and blocked and blocked == seen:
+        raise RuntimeError(
+            f"Scraper was blocked on all {blocked} requests (anti-bot). Try again "
+            f"later, narrow SEARCH_URLS, or switch actors."
+        )
     return parcels
 
 
-def _row_to_parcel(row: dict) -> Optional[Parcel]:
-    """Best-effort normalization of a scraper row into a Parcel."""
-    def num(*keys, default=0.0):
+# Nested containers land scrapers commonly wrap fields in (e.g. memo23).
+_NESTED_KEYS = ("propertyData", "basicInfo", "address", "listingDetail", "details")
+
+
+def _deep_get(row: dict, *keys):
+    """First non-empty value for any key, searched top-level then nested objects.
+
+    Robust across actor schemas: flat (Land.com) and nested (memo23 LandWatch,
+    which wraps lat/lon/address under propertyData/basicInfo/address).
+    """
+    containers = [row]
+    for sub in _NESTED_KEYS:
+        v = row.get(sub)
+        if isinstance(v, dict):
+            containers.append(v)
+    for c in containers:
         for k in keys:
-            v = row.get(k)
+            v = c.get(k)
             if v not in (None, ""):
-                try:
-                    return float(v)
-                except (TypeError, ValueError):
-                    continue
-        return default
+                return v
+    return None
+
+
+def _row_to_parcel(row: dict) -> Optional[Parcel]:
+    """Best-effort normalization of a scraper row into a Parcel (schema-agnostic)."""
+    def num(*keys, default=0.0):
+        v = _deep_get(row, *keys)
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default
 
     acres = num("acres", "lotSizeAcres", "acreage")
     price = num("price", "askingPrice", "listPrice")
@@ -150,38 +185,55 @@ def _row_to_parcel(row: dict) -> Optional[Parcel]:
 
     lat = num("latitude", "lat")
     lon = num("longitude", "lng", "lon")
-    if lat == 0.0 and lon == 0.0:
-        return None
 
-    listing_url = (row.get("canonicalUrl") or row.get("url")
-                   or row.get("listingUrl") or row.get("link") or None)
-    # The Land.com scraper output has no stable id; fall back to the canonical
-    # URL (unique), then a composite, so parcels remain distinguishable.
+    listing_url = _deep_get(row, "url", "canonicalUrl", "listingUrl", "link", "detailUrl")
+    apn = _deep_get(row, "parcelId", "apn", "parcelNumber")
+
+    # Build a one-line street address for the geocoding fallback.
+    street = _deep_get(row, "address1", "streetAddress", "street")
+    city = _deep_get(row, "city", "siteCity", "SiteCity")
+    zip_c = _deep_get(row, "zip", "zipCode", "postalCode")
+    st = str(_deep_get(row, "state", "stateCode") or "").upper()[:2]
+    addr_parts = [str(x) for x in (street, city, f"{st} {zip_c}".strip()) if x]
+    street_address = ", ".join(addr_parts) if street and (city or zip_c) else None
+
+    # Keep parcels missing coordinates ONLY if we can resolve them later (APN or
+    # a geocodable address); otherwise there is nothing to place on the map.
+    has_coords = not (lat == 0.0 and lon == 0.0)
+    if not has_coords and not (apn or street_address):
+        return None
+    # Stable id: explicit id, else APN, else listing URL, else a composite.
+    zip_code = _deep_get(row, "zip", "zipCode", "postalCode") or ""
+    county = str(_deep_get(row, "county", "countyName") or "Unknown")
     parcel_id = str(
-        row.get("id") or row.get("parcelId") or row.get("mlsId") or listing_url
-        or f"{row.get('county', 'Unknown')}-{row.get('zip', '')}-{int(price)}"
+        _deep_get(row, "id", "pid", "mlsId") or apn or listing_url
+        or f"{county}-{zip_code}-{int(price)}"
     )
+    source_date = _deep_get(row, "publishedAt", "listedDate", "listDate")
 
     return Parcel(
         parcel_id=parcel_id,
-        county=str(row.get("county") or row.get("countyName") or "Unknown"),
-        state=str(row.get("state") or row.get("stateCode") or "").upper()[:2],
+        county=county,
+        state=str(_deep_get(row, "state", "stateCode") or "").upper()[:2],
         lat=lat,
         lon=lon,
         acres=acres,
         asking_price=price,
         days_on_market=int(num("daysOnMarket", "dom")),
-        listing_description=str(row.get("description") or row.get("remarks") or ""),
-        landlocked=bool(row.get("landlocked", False)),
-        has_legal_easement=bool(row.get("hasEasement", True)),
+        listing_description=str(_deep_get(row, "description", "descriptionText",
+                                          "remarks", "summary") or ""),
+        landlocked=bool(_deep_get(row, "landlocked") or False),
+        has_legal_easement=bool(_deep_get(row, "hasEasement")
+                                if _deep_get(row, "hasEasement") is not None else True),
         water_rights_acre_feet=num("waterRightsAcreFeet", "waterRights"),
-        geothermal_signature=bool(row.get("geothermal", False)),
-        mineral_claims=bool(row.get("mineralClaims", False)),
+        geothermal_signature=bool(_deep_get(row, "geothermal") or False),
+        mineral_claims=bool(_deep_get(row, "mineralClaims") or False),
         source="apify",
         listing_url=listing_url,
-        apn=(str(row["apn"]) if row.get("apn") else
-             (str(row["parcelNumber"]) if row.get("parcelNumber") else None)),
-        source_date=(str(row["listedDate"]) if row.get("listedDate") else None),
+        apn=(str(apn) if apn else None),
+        source_date=(str(source_date) if source_date else None),
+        street_address=street_address,
+        coord_source=("listing" if has_coords else None),
     )
 
 

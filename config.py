@@ -106,6 +106,10 @@ class Config:
     # Targeting
     target_states: List[str] = field(default_factory=lambda: ["NV", "AZ", "UT", "NM"])
     target_zips: List[str] = field(default_factory=list)
+    # URL-based scrapers (e.g. crawlerbros/us-land-scraper) take LandWatch search
+    # URLs and a per-run item cap (bounds cost).
+    search_urls: List[str] = field(default_factory=list)
+    max_items: int = 25
 
     # Paths (kept on the object so downstream modules never hard-code them)
     transmission_lines_path: Path = TRANSMISSION_LINES_PATH
@@ -159,7 +163,7 @@ def load_config() -> Config:
 
     cfg = Config(
         apify_token=token,
-        scraper_actor_id=actor_id or "rigelbytes~landdotcom-scraper",
+        scraper_actor_id=actor_id or "memo23~landwatch-scraper",
         run_mode=run_mode,
         max_price_per_acre=_get_float("MAX_PRICE_PER_ACRE", 2000.0),
         min_transmission_buffer_miles=_get_float("MIN_TRANSMISSION_BUFFER_MILES", 3.0),
@@ -171,6 +175,8 @@ def load_config() -> Config:
         surface_water_bonus_miles=_get_float("SURFACE_WATER_BONUS_MILES", 5.0),
         target_states=_get_list("TARGET_STATES", ["NV", "AZ", "UT", "NM"]),
         target_zips=_get_list("TARGET_ZIPS", []),
+        search_urls=_get_list("SEARCH_URLS", []),
+        max_items=_get_int("MAX_ITEMS", 25),
         transmission_lines_path=_resolve_gis(TRANSMISSION_LINES_PATH),
         substations_path=_resolve_gis(SUBSTATIONS_PATH),
         hydrography_path=_resolve_gis(HYDROGRAPHY_PATH),

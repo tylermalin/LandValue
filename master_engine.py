@@ -89,6 +89,18 @@ def analyze(cfg: Config, parcels: List[Parcel] | None = None) -> AnalysisResult:
     if not parcels:
         return AnalysisResult([], [], 0, 0, warnings)
 
+    # Resolve coordinates for any parcels missing them (live listings, CSV
+    # imports) from free public GIS: APN -> county parcel geometry, else geocode
+    # the address. Parcels that already have coords (mock/synthetic) are skipped.
+    missing = [p for p in parcels if not (p.lat and p.lon)]
+    if missing:
+        from parcel_gis import enrich_coordinates
+        got = enrich_coordinates(missing)
+        warnings.append(
+            f"Coordinate enrichment: resolved {got}/{len(missing)} parcels "
+            f"missing coordinates via public GIS."
+        )
+
     wr_repo = WaterRightsRepository(cfg.water_rights_db_path)
     matched = 0
     if wr_repo.warning:
@@ -108,13 +120,19 @@ def analyze(cfg: Config, parcels: List[Parcel] | None = None) -> AnalysisResult:
     return AnalysisResult(ranked, disqualified, len(parcels), matched, warnings)
 
 
-def run(cfg: Config, top_n: int) -> int:
+def run(cfg: Config, top_n: int, parcels_file: str | None = None) -> int:
     for warn in cfg.warnings:
         _log(f"WARNING: {warn}")
 
     _log(f"Run mode: {cfg.run_mode.upper()} | corridor: {', '.join(cfg.target_states)}")
 
-    result = analyze(cfg)
+    parcels = None
+    if parcels_file:
+        from parcel_import import parcels_from_file
+        parcels = parcels_from_file(parcels_file)
+        _log(f"Imported {len(parcels)} candidate parcels from {parcels_file}.")
+
+    result = analyze(cfg, parcels=parcels)
     _log(f"Ingested {result.ingested} candidate parcels.")
     if result.ingested == 0:
         _log("No parcels ingested — nothing to score. Exiting.")
@@ -152,6 +170,8 @@ def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Land Value Engine (LVE-LAP) pipeline")
     parser.add_argument("--top", type=int, default=10, help="Number of anomalies to report")
     parser.add_argument("--mock", action="store_true", help="Force synthetic parcels")
+    parser.add_argument("--parcels-file", help="CSV/JSON of curated parcels "
+                        "(APN/address + asking price); coords resolved via public GIS")
     args = parser.parse_args(argv)
 
     try:
@@ -163,7 +183,7 @@ def main(argv: List[str] | None = None) -> int:
     if args.mock:
         cfg = Config(**{**cfg.__dict__, "run_mode": "mock"})
 
-    return run(cfg, args.top)
+    return run(cfg, args.top, parcels_file=args.parcels_file)
 
 
 if __name__ == "__main__":

@@ -90,34 +90,43 @@ def test_synthetic_corridor_size_and_states():
 # --- live-mode wiring (schema-correct, no network) ---------------------------
 @dataclass
 class _Cfg:
-    target_zips: List[str] = field(default_factory=lambda: ["89013", "86021"])
+    search_urls: List[str] = field(default_factory=list)
+    max_items: int = 25
 
 
-def test_build_run_input_matches_actor_schema():
-    ri = build_run_input(_Cfg())
-    assert ri["zip_codes"] == ["89013", "86021"]     # actor's required field name
-    assert ri["listing_type"] == "for_sale"
-    assert ri["proxyConfiguration"]["useApifyProxy"] is True
-    # Must NOT carry the old wrong keys.
-    assert "zipCodes" not in ri and "states" not in ri
+def test_build_run_input_url_based_schema():
+    ri = build_run_input(_Cfg(search_urls=["https://www.landwatch.com/x"]))
+    assert ri["startUrls"] == ["https://www.landwatch.com/x"]  # actor's field name
+    assert ri["maxItems"] == 25
+    assert ri["proxy"]["apifyProxyGroups"] == ["RESIDENTIAL"]
+    # Must NOT carry other actors' key names.
+    assert "zip_codes" not in ri and "searchUrls" not in ri
 
 
-def test_row_to_parcel_maps_landdotcom_fields():
-    # Real Land.com Scraper output field names.
+def test_build_run_input_defaults_to_corridor_urls():
+    ri = build_run_input(_Cfg())  # no SEARCH_URLS set
+    assert ri["startUrls"]
+    assert all("landwatch.com" in u for u in ri["startUrls"])
+
+
+def test_row_to_parcel_maps_nested_landwatch_fields():
+    # memo23/landwatch-scraper nests fields under propertyData / address.
     row = {
-        "canonicalUrl": "https://www.land.com/property/abc-123/",
-        "county": "Esmeralda", "state": "NV", "zip": "89013",
-        "latitude": 37.78, "longitude": -117.23,
-        "acres": 640, "price": 920000,
-        "pricePerAcre": 1437, "description": "raw land, as-is",
+        "id": "LW-123", "url": "https://www.landwatch.com/property/123",
+        "propertyData": {"latitude": 37.78, "longitude": -117.23,
+                         "acres": 40, "price": 250000, "parcelId": "007-041-17"},
+        "address": {"city": "Pahrump", "state": "NV", "zip": "89048",
+                    "county": "Nye"},
+        "descriptionText": "raw desert acreage",
     }
     p = _row_to_parcel(row)
     assert p is not None
-    assert p.source == "apify"
-    assert p.listing_url == "https://www.land.com/property/abc-123/"
-    # No stable id in output -> falls back to the canonical URL.
-    assert p.parcel_id == "https://www.land.com/property/abc-123/"
-    assert p.state == "NV" and p.acres == 640.0 and p.asking_price == 920000.0
+    assert p.parcel_id == "LW-123"
+    assert p.apn == "007-041-17"                    # from nested propertyData
+    assert p.state == "NV" and p.county == "Nye"    # from nested address
+    assert p.lat == 37.78 and p.lon == -117.23
+    assert p.acres == 40.0 and p.asking_price == 250000.0
+    assert p.listing_description == "raw desert acreage"
 
 
 def test_row_to_parcel_id_composite_fallback_without_url():
