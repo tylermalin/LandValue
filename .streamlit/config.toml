@@ -1,0 +1,12 @@
+# Streamlit configuration (used by `streamlit run` and Streamlit Community Cloud).
+[theme]
+primaryColor = "#13315c"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f5f7"
+textColor = "#1a1f2b"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true

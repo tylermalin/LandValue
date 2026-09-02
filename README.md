@@ -149,6 +149,19 @@ forge install foundry-rs/forge-std openzeppelin/openzeppelin-contracts --no-git
 forge test -vvv                     # 17 tests: full escrow lifecycle
 ```
 
+## Deploy the dashboard (Streamlit Community Cloud)
+
+The repo is deploy-ready for a free hosted URL:
+
+1. Go to **https://share.streamlit.io** and sign in with GitHub.
+2. **New app** → repo `tylermalin/LandValue`, branch `main`, main file `dashboard.py`.
+3. **Deploy** → you get a public `https://…streamlit.app` URL.
+
+The hosted app runs on the committed **sample GIS** (`data/gis/samples/`) since the
+full fetched GIS is git-ignored; "Curated parcels" mode still resolves real
+coordinates from public GIS at runtime. `requirements.txt` is kept lightweight
+(no geopandas/GDAL) so the build is fast.
+
 ## Dashboard (Phase 3)
 
 An interactive Streamlit dashboard visualizes the Top-N latent-arbitrage matrix
