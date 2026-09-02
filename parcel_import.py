@@ -77,14 +77,19 @@ def record_to_parcel(rec: dict) -> Parcel | None:
     )
 
 
-def parcels_from_file(path) -> List[Parcel]:
-    """Load candidate parcels from a .csv or .json file."""
-    p = Path(path)
-    text = p.read_text(encoding="utf-8")
-    if p.suffix.lower() == ".json":
+def parcels_from_text(text: str, fmt: str = "csv") -> List[Parcel]:
+    """Parse candidate parcels from CSV or JSON text (fmt: 'csv' | 'json')."""
+    if fmt == "json":
         records = json.loads(text)
         if isinstance(records, dict):
             records = records.get("parcels", [])
     else:
         records = list(csv.DictReader(text.splitlines()))
     return [pc for pc in (record_to_parcel(r) for r in records) if pc is not None]
+
+
+def parcels_from_file(path) -> List[Parcel]:
+    """Load candidate parcels from a .csv or .json file."""
+    p = Path(path)
+    fmt = "json" if p.suffix.lower() == ".json" else "csv"
+    return parcels_from_text(p.read_text(encoding="utf-8"), fmt)
